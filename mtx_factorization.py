@@ -6,13 +6,13 @@ import numpy as np
 import pandas as pd
 
 class Fbase():
-    def __init__(self, R, K, alpha, beta, iterations):
+    def __init__(self, R, K, alpha, beta, epochs):
         self.R = R
         self.num_users, self.num_items = R.shape
         self.K = K
         self.alpha = alpha
         self.beta = beta
-        self.iterations = iterations
+        self.epochs = epochs
 
     def plot_errors(self, errors, pic_loss=None, show=True):
         plt.figure(figsize=(10,6))
@@ -28,10 +28,10 @@ class Fbase():
         plt.close()
 
 class MF(Fbase):
-    def __init__(self, R, K, alpha, beta, iterations):
-        super().__init__(R, K, alpha, beta, iterations)
+    def __init__(self, R, K, alpha, beta, epochs):
+        super().__init__(R, K, alpha, beta, epochs)
         '''
-        MF(R, K=5, alpha=0.1, beta=0.01, iterations=20)
+        MF(R, K=5, alpha=0.1, beta=0.01, epochs=20)
         Perform matrix factorization to predict empty entries in a matrix.
         Arguments
         - R (ndarray)   : user-item rating matrix
@@ -41,7 +41,7 @@ class MF(Fbase):
         '''
 
     def train(self):
-        self.P = np.random.normal(scale=1./self.K, size=(self.num_users, self.K)) # rows, users latent feature matrice
+        self.P = np.random.normal(scale=1./self.K, size=(self.num_users, self.K)) # rows, users matrix
         self.Q = np.random.normal(scale=1./self.K, size=(self.num_items, self.K)) # cols, items
 
         self.b_u = np.zeros(self.num_users) #biases
@@ -56,7 +56,7 @@ class MF(Fbase):
         ] # training samples
         
         errors = []
-        for i in range(self.iterations):         # stochastic gradient descent # iterations
+        for i in range(self.epochs):         # stochastic gradient descent # epochs
             np.random.shuffle(self.samples)
             self.sgd()
             mse = self.mse()
@@ -69,17 +69,17 @@ class MF(Fbase):
     def mse(self):
         '''compute the total mean square error'''
         xs, ys = self.R.nonzero()
-        predicted = self.full_matrix()
+        R_hat = self.full_matrix()
         error = 0
         for x, y in zip(xs, ys):
-            error += pow(self.R[x, y] - predicted[x, y], 2)
+            error += pow(self.R[x, y] - R_hat[x, y], 2)
         return np.sqrt(error)
 
     def sgd(self):
         '''stochastic graident descent'''
         for i, j, r in self.samples:
-            prediction = self.get_rating(i, j) # prediction and error
-            e = (r - prediction)
+            r_hat = self.get_rating(i, j) # prediction and error
+            e = (r - r_hat)
 
             self.b_u[i] += self.alpha * (e - self.beta * self.b_u[i]) # update biases
             self.b_i[j] += self.alpha * (e - self.beta * self.b_i[j])
@@ -91,8 +91,7 @@ class MF(Fbase):
 
     def get_rating(self, i, j):
         '''predicted rating of user i and item j'''
-        prediction = self.b + self.b_u[i] + self.b_i[j] + self.P[i, :].dot(self.Q[j, :].T)
-        return prediction
+        return self.b + self.b_u[i] + self.b_i[j] + self.P[i, :].dot(self.Q[j, :].T)
     
     def full_matrix(self):
         '''full matrix using the biases, P and Q '''
@@ -106,14 +105,13 @@ def main():
       [0.0, 3.5, 4.5, 1.0]
     ])
 
-    print('orig:\n', R)
-
     #alpha : learning rate, beta : regularization parameter, _lambda : reqularization
-    mf = MF(R, K=5, alpha=0.1, beta=0.01, iterations=20)
+    mf = MF(R, K=5, alpha=0.1, beta=0.01, epochs=20)
     errors = mf.train()
     mtx = mf.full_matrix()
-    mtx = np.rint(mtx)
-    print('estimated:\n',mtx)
+    #mtx = np.rint(mtx)
+    print('R:\n', R)
+    print('R_hat:\n', mtx)
     mf.plot_errors(errors)
     
 if __name__ == '__main__':
@@ -121,3 +119,13 @@ if __name__ == '__main__':
     main()
     end = time.time()
     print(f'Executed in {end - start:0.5f}s')
+
+'''
+R ~ P x Q^T = R_hat
+r_hat_ij = pi^T*gj = sum_K(pik*qjk)
+e^2 = (r_ij - r_hat_ij)^2
+
+reqularize
+e^2 = (r_ij - r_hat_ij)^2 + L2()
+
+'''
