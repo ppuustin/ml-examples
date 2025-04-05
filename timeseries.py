@@ -3,6 +3,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import matplotlib.pyplot as plt
+import threading, itertools
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,70 @@ from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense  
 from tensorflow.keras.models import Model
 
+class IndexGenerator(object):
+    def __init__(self, ids):
+        self.ids = ids
+        self.lock = threading.Lock()
+        self.it = itertools.cycle(self.ids)
+
+    def shuffle(self):
+        np.random.shuffle(self.ids)            
+        self.it = itertools.cycle(self.ids) 
+     
+    def __len__(self):
+        return len(self.ids)          
+
+    def __next__(self):
+        with self.lock:
+            return next(self.it) #next index
+
+class SampleGenerator(tf.keras.utils.Sequence):
+    def __init__(self, x, y, batch_size, shuffle=True):
+        ids =  list(range(0, x.shape[0]))
+        self.id_gen = IndexGenerator(ids)
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.x = x
+        self.y = y
+        self.cval = 'value' # TODO the name?
+
+    def get_xy(self):
+        x = [self.x.iloc[i][self.cval] for i in self.id_gen.ids]
+        y = [self.y.iloc[i] for i in self.id_gen.ids]        
+        x, y = np.array(x, dtype=np.float32), np.array(y, dtype=np.float32)
+        return x, y
+
+    # -------------------------------------------------------------------
+    # from tf.keras.utils.Sequence
+
+    def __len__(self):
+        n = len(self.id_gen)/self.batch_size
+        return int(np.floor(n))              # batches per epoch
+
+    def __getitem__(self, index):
+        return self.__get_batch(index)
+
+    def on_epoch_end(self):
+        if self.shuffle == True:       
+            self.id_gen.shuffle() 
+
+    # -------------------------------------------------------------------
+    # private methods
+
+    def __get_batch(self, index):
+        '''dataset and task specific implementation'''
+        x_seqs, y_seqs = [], []
+        for b in range(self.batch_size):
+            sample_id = next(self.id_gen)
+            #if line == None: raise Exception(f"id {sample_id} not found")
+            x = self.x.iloc[sample_id][self.cval] # TODO the name?
+            y = self.y.iloc[sample_id]          
+            x_seqs.append(x)
+            y_seqs.append(y)
+
+        x_seqs = np.array(x_seqs, dtype=np.float32) #float16 .astype(int)
+        y_seqs = np.array(y_seqs, dtype=np.float32).astype(int) #np.array([], dtype=np.float32)
+        return x_seqs, y_seqs
 
 class LossCallback(tf.keras.callbacks.Callback):
     
@@ -110,6 +175,26 @@ def split_data(train, test, x_names, y_name, agg=None):
 
     return x_train, y_train, x_test, y_test   
 
+def get_generators(df, batch_size, x_names, y_name, pct_train=0.8, pct_test=0.2, pct_val=0.2):
+    split = int(df.shape[0] * pct_train)
+    df_train, df_test = df[:split], df[split:]
+
+    split = int(df_train.shape[0] * (1 - pct_val))
+    df_train, df_val = df_train[:split], df_train[split:]
+    print('train/test/val:', df_train.shape, df_test.shape, df_val.shape)
+    
+    x_train, y_train = df_train[x_names], df_train[y_name]
+    x_test, y_test = df_test[x_names], df_test[y_name]    
+    x_val, y_val = df_val[x_names], df_val[y_name]     
+    
+    x_train, y_train = x_train.iloc[:-1], y_train.iloc[1:]
+    x_test, y_test = x_test.iloc[:-1], y_test.iloc[1:]
+    x_val, y_val = x_val.iloc[:-1], y_val.iloc[1:]
+
+    train_gen = SampleGenerator(x_train, y_train, batch_size)
+    test_gen = SampleGenerator(x_test, y_test, batch_size)
+    val_gen = SampleGenerator(x_val, y_val, batch_size)
+    return train_gen, test_gen, val_gen
 # --------------------------------------------------------------
 
 def train_sk(x_train, y_train):
@@ -156,6 +241,30 @@ def train_tf(x_train, y_train):
               callbacks=callbacks)  
     return model
 
+def train_gen(train_gen, val_gen, test_gen):
+    print(sys._getframe().f_code.co_name)
+    input_length, input_dim = 1, 1
+    lstm_units_1, kernel_act = 2**6, 'linear'
+    loss, optimizer, metrics = 'mean_squared_error', 'adam',  ['mae']
+    epochs = 5
+
+    callbacks = [LossCallback(epochs)] 
+
+    input_layer = Input(shape=(input_length,input_dim))
+    x = LSTM(lstm_units_1)(input_layer)
+    output = Dense(input_dim, activation=kernel_act)(x) # , 
+    model = Model([input_layer], output)          
+
+    model.compile(loss=loss, optimizer=optimizer, metrics=metrics)   
+
+    history = model.fit_generator(
+                    generator=train_gen,
+                    validation_data=val_gen,                     
+                    callbacks=callbacks,
+                    epochs=epochs, 
+                    shuffle=True)
+    return model
+
 def inference(model, x_test):
     print('inference :', x_test.shape)
     return model.predict(x_test)
@@ -174,26 +283,33 @@ def plot_pred(y_train, y_test, y_hat, y_name, title):
     plt.show()
     plt.close()
 
-def main():
-    print(os.getcwd())
-    file = os.getcwd() + '/input/sine.csv' # sine-wave
+def main_gen(file):
+    df, x_names, y_name = get_data(file)
+    tra_gen, tes_gen, val_gen = get_generators(df, 2**3, x_names, y_name)
+    model = train_gen(tra_gen, tes_gen, val_gen)
+    x_test, y_test = tes_gen.get_xy()
+    y_hat = inference(model, x_test)
+    msq = round(np.sqrt(metrics.mean_squared_error(y_test, y_hat)), 2)
+    print('msq:', msq) #TODO, not ok yet
+    
+def main(file):
     df, x_names, y_name = get_data(file)
     print('in:', df.shape)
     agg = None
     df_train, df_test = get_train_test(df)    
     x_train, y_train, x_test, y_test = split_data(df_train, df_test, x_names, y_name, agg=agg)
     
-    print(df_train.shape, df_test.shape)
-    print(x_train.shape, x_test.shape)
+    print('train/test:', df_train.shape, df_test.shape)
+    print('xy/xy:', x_train.shape, y_train.shape, x_test.shape, y_test.shape)
     
     #model = train_sk(x_train, y_train)
     model = train_tf(x_train, y_train)
-    
+
     y_hat = inference(model, x_test)
     print('hat/test/train:',  y_hat.shape, y_test.shape, y_train.shape)
 
     msq = round(np.sqrt(metrics.mean_squared_error(y_test, y_hat)), 2)
-    print(msq)
+    print('msq:', msq)
  
     print('x{0}y{1} rmse'.format(' '*12, ' '*12))
     print('{:13s}{:13s}{}'.format(','.join(x_names), y_name, msq))
@@ -201,9 +317,6 @@ def main():
     df_test = df_test.iloc[1:]
     df_test['y_hat'] = y_hat
     _df = df_train.append(df_test)
-    
-    print('out:',  _df.shape)
-    print(_df)
 
     title = 'y: {0}, agg: {1}, rmse: {2}'.format(y_name, agg, msq)
     plot_pred(y_train, y_test, _df['y_hat'], y_name, title)
@@ -211,8 +324,12 @@ def main():
 if __name__ == '__main__':
     #pd.set_option('display.max_rows', 6000)
     #pd.set_option('display.max_columns', 500)
-    #pd.set_option('display.width', 1000)  
-    main()
+    #pd.set_option('display.width', 1000)
+    print(os.getcwd())
+    file = os.getcwd() + '/input/sine.csv' # sine-wave
+
+    main(file)
+    #main_gen(file)
 
 '''
 
