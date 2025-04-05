@@ -13,6 +13,8 @@ class Fbase():
         self.alpha = alpha
         self.beta = beta
         self.epochs = epochs
+        self.requ = 'L2'
+        self._lambda = 0.01
 
     def plot_errors(self, errors, pic_loss=None, show=True):
         plt.figure(figsize=(10,6))
@@ -26,6 +28,14 @@ class Fbase():
         if pic_loss: plt.savefig(self.pic_loss)
         if show: plt.show()
         plt.close()
+
+    def req(self, lambda_, w1): # req(self, lambda_, w1, w2):
+        if 'L1' == self.requ:
+            return lambda_ * (np.sum(w1).sum()) # L1, absolute value
+            #return (lambda_/2.0) * (np.sum(w1[:, 1:]).sum() + np.sum(w2[:,1:]).sum())
+        else:
+            return lambda_ * (np.sum(w1 ** 2))  # L2, squared
+            #return (lambda_/2.0) * (np.sum(w1[:, 1:] ** 2) + np.sum(w2[:,1:] ** 2))
 
 class MF(Fbase):
     def __init__(self, R, K, alpha, beta, epochs):
@@ -83,11 +93,16 @@ class MF(Fbase):
 
             self.b_u[i] += self.alpha * (e - self.beta * self.b_u[i]) # update biases
             self.b_i[j] += self.alpha * (e - self.beta * self.b_i[j])
+            #self.b_u[i] += self.alpha * (e - self.beta * (self.req(self._lambda, self.b_u[i]))) # req b = (1- n/N)s
+            #self.b_i[j] += self.alpha * (e - self.beta * (self.req(self._lambda, self.b_i[j])))             
+            
             
             P_i = self.P[i, :][:] # copy of row of P for update, but use older values for update on Q
             
             self.P[i, :] += self.alpha * (e * self.Q[j, :] - self.beta * self.P[i,:]) # update user/item matrices
             self.Q[j, :] += self.alpha * (e * P_i - self.beta * self.Q[j,:])
+            #self.P[i, :] += self.alpha * (e * self.Q[j, :] - self.req(self._lambda, self.P[i,:]))
+            #self.Q[j, :] += self.alpha * (e * P_i - self.req(self._lambda, self.Q[j,:]))
 
     def get_rating(self, i, j):
         '''predicted rating of user i and item j'''
