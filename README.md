@@ -15,6 +15,17 @@ git rebase -i origin/master
 ```
 
 ```sh
+git branch <branch-name>
+git checkout <branch-name>
+... blaah blaah
+git git push --set-upstream origin <branch-name>
+<pull request + review + push to main>
+ 
+git checkout master
+git pull
+```
+
+```sh
 git status
 git restore
 git restore <file>      #rollback
