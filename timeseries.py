@@ -2,6 +2,8 @@ import os, os.path, time, random, math, sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
+#import matplotlib as mpl
+#mpl.use('Agg')
 import matplotlib.pyplot as plt
 import threading, itertools
 
@@ -16,11 +18,6 @@ from sklearn.svm import SVR
 from sklearn import metrics
 
 import tensorflow as tf
-
-from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import LSTM
-from tensorflow.keras.layers import Dense  
-from tensorflow.keras.models import Model
 
 class IndexGenerator(object):
     def __init__(self, ids):
@@ -40,7 +37,7 @@ class IndexGenerator(object):
             return next(self.it) #next index
 
 class SampleGenerator(tf.keras.utils.Sequence):
-    def __init__(self, x, y, batch_size, shuffle=True):
+    def __init__(self, x, y, batch_size, shuffle=False):
         ids =  list(range(0, x.shape[0]))
         self.id_gen = IndexGenerator(ids)
         self.batch_size = batch_size
@@ -53,7 +50,7 @@ class SampleGenerator(tf.keras.utils.Sequence):
         x = [self.x.iloc[i][self.cval] for i in self.id_gen.ids]
         y = [self.y.iloc[i] for i in self.id_gen.ids]        
         x, y = np.array(x, dtype=np.float32), np.array(y, dtype=np.float32)
-        return x, y
+        return x.reshape(-1,1), y
 
     # -------------------------------------------------------------------
     # from tf.keras.utils.Sequence
@@ -84,8 +81,52 @@ class SampleGenerator(tf.keras.utils.Sequence):
             y_seqs.append(y)
 
         x_seqs = np.array(x_seqs, dtype=np.float32) #float16 .astype(int)
-        y_seqs = np.array(y_seqs, dtype=np.float32).astype(int) #np.array([], dtype=np.float32)
-        return x_seqs, y_seqs
+        y_seqs = np.array(y_seqs, dtype=np.float32) #.astype(int) #np.array([], dtype=np.float32)
+        return x_seqs.reshape(-1,1), y_seqs
+
+class LearningRateCallback(object):
+    '''
+    https://www.jeremyjordan.me/nn-learning-rate/
+    https://en.wikipedia.org/wiki/Exponential_decay
+    '''
+    def __init__(self, params):
+        self.initial = params['lr_initial']
+        self.decay = params['lr_decay']
+        self.floor = params['lr_floor']
+        self.step = params["lr_step"]
+        self.epochs = params["epochs"]
+        self.pic_lr = params["pic_lr"]
+
+    def plot_learning_rate(self, save_fig=False):
+        lr = [self.schedule(x) for x in range(self.epochs)]
+        plt.figure(figsize=(10,6))
+        plt.title('Learning rate schedule')
+        plt.xlabel('epoch')
+        plt.ylabel('learning rate')
+        plt.plot(lr, label='lr')     
+        step = self.epochs // 20
+        if step < 1: step = self.epochs
+        plt.xticks([x for x in range(0, self.epochs + 1, step)])
+        plt.legend(loc='best')
+        plt.grid(True)
+        if save_fig:
+            plt.savefig(self.pic_lr)
+        else:
+            plt.show()
+        plt.close()
+
+    def schedule(self, epoch):
+        #self.decay = 0.95
+        #lr = self.initial * (self.decay ** epoch)        
+        ste = math.floor(epoch/self.step)
+        tau = ste/(self.epochs*self.decay)        
+        #tau = (epoch)/(self.epochs*self.decay)
+        lr = self.initial * math.exp(-tau)        
+        if lr < self.floor: lr = self.floor
+        return lr
+
+    def get_lr_scheduler(self):
+        return tf.keras.callbacks.LearningRateScheduler(self.schedule)
 
 class LossCallback(tf.keras.callbacks.Callback):
     
@@ -214,13 +255,9 @@ def train_sk(x_train, y_train):
 
 def train_tf(x_train, y_train):
     print(sys._getframe().f_code.co_name)
-    input_length = 1
-    input_dim = 1
-    lstm_units_1 = 2**6
-    kernel_act = 'linear' # relu softmax
-    loss = 'mean_squared_error'
-    optimizer = 'adam'
-    metrics=['mae']
+    input_length, input_dim = 1, 1
+    lstm_units_1, kernel_act = 2**6, 'linear' # relu softmax
+    loss, optimizer, metrics = 'mean_squared_error', 'adam',  ['mae']
 
     batch_size = 2**3
     epochs = 5
@@ -228,10 +265,10 @@ def train_tf(x_train, y_train):
     validation_split = 0.2
     callbacks = [LossCallback(epochs)] 
 
-    input_layer = Input(shape=(input_length,input_dim))
-    x = LSTM(lstm_units_1)(input_layer)
-    output = Dense(input_dim, activation=kernel_act)(x) # , 
-    model = Model([input_layer], output)          
+    inputs = tf.keras.layers.Input(shape=(input_length,input_dim))
+    x = tf.keras.layers.LSTM(lstm_units_1)(inputs)
+    output = tf.keras.layers.Dense(input_dim, activation=kernel_act)(x) # , 
+    model = tf.keras.models.Model([inputs], output)          
 
     model.compile(loss=loss, optimizer=optimizer, metrics=metrics)   
 
@@ -250,19 +287,19 @@ def train_gen(train_gen, val_gen, test_gen):
 
     callbacks = [LossCallback(epochs)] 
 
-    input_layer = Input(shape=(input_length,input_dim))
-    x = LSTM(lstm_units_1)(input_layer)
-    output = Dense(input_dim, activation=kernel_act)(x) # , 
-    model = Model([input_layer], output)          
+    inputs = tf.keras.layers.Input(shape=(input_length,input_dim))
+    x = tf.keras.layers.LSTM(lstm_units_1)(inputs)
+    output = tf.keras.layers.Dense(input_dim, activation=kernel_act)(x) # , 
+    model = tf.keras.models.Model([inputs], output)          
 
     model.compile(loss=loss, optimizer=optimizer, metrics=metrics)   
 
-    history = model.fit_generator(
-                    generator=train_gen,
+    history = model.fit(
+                    train_gen,
                     validation_data=val_gen,                     
                     callbacks=callbacks,
                     epochs=epochs, 
-                    shuffle=True)
+                    shuffle=False)
     return model
 
 def inference(model, x_test):
@@ -285,12 +322,12 @@ def plot_pred(y_train, y_test, y_hat, y_name, title):
 
 def main_gen(file):
     df, x_names, y_name = get_data(file)
-    tra_gen, tes_gen, val_gen = get_generators(df, 2**3, x_names, y_name)
+    tra_gen, tes_gen, val_gen = get_generators(df, 2**2, x_names, y_name)
     model = train_gen(tra_gen, tes_gen, val_gen)
     x_test, y_test = tes_gen.get_xy()
     y_hat = inference(model, x_test)
     msq = round(np.sqrt(metrics.mean_squared_error(y_test, y_hat)), 2)
-    print('msq:', msq) #TODO, not ok yet
+    print('msq:', msq)
     
 def main(file):
     df, x_names, y_name = get_data(file)
@@ -321,6 +358,24 @@ def main(file):
     title = 'y: {0}, agg: {1}, rmse: {2}'.format(y_name, agg, msq)
     plot_pred(y_train, y_test, _df['y_hat'], y_name, title)
 
+def test_lr():
+    # lin = ep
+    # smo = 1/2
+    # fa = 1/5
+    params = {
+        "epochs"       : 1000,
+                                           # step  smooth
+        "lr_initial"   : 0.0005,                           #0.001,
+        "lr_floor"     : 0.00003,
+        "lr_decay"     : 0.3,              # 0.04  0.6     # 0.3=steep, 0.6=lin
+        "lr_step"      : 1,                # 10    1
+        "pic_lr"       : "test.png"
+    }
+    
+    lr = LearningRateCallback(params)
+    ls = lr.get_lr_scheduler()
+    lr.plot_learning_rate()
+
 if __name__ == '__main__':
     #pd.set_option('display.max_rows', 6000)
     #pd.set_option('display.max_columns', 500)
@@ -328,15 +383,9 @@ if __name__ == '__main__':
     print(os.getcwd())
     file = os.getcwd() + '/input/sine.csv' # sine-wave
 
-    main(file)
-    #main_gen(file)
+    #main(file)
+    main_gen(file)
+    #test_lr()
 
 '''
-
-The conflict is caused by:
-    The user requested numpy
-    pandas 1.5.3 depends on numpy>=1.20.3; python_version < "3.10"
-    scikit-learn 1.0.2 depends on numpy>=1.14.6
-    tensorflow 2.5.0 depends on numpy~=1.19.2
-
 '''
