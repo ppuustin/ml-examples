@@ -94,8 +94,8 @@ if __name__=="__main__":
     os.environ['AZURE_API_KEY'] = 'xx'
     os.environ['AZURE_API_BASE'] = 'xx'
     os.environ['AZURE_API_VERSION'] = 'xx'
-    os.environ['OPENAI_MODEL_NAME'] = 'xx'
-    
+    os.environ['OPENAI_MODEL_NAME'] = 'azure/gpt-xxx'
+
     run_agents()
     print('DONE in:', time.time() - start_time, 's')
 
