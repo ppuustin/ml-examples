@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import struct 
+import os, struct 
 import numpy as np
 from scipy import signal as sg
 
@@ -43,13 +43,27 @@ class Oscillator(object):
             y = offs + ampl * sg.square(2 * np.pi * self.f * x / self.fs )
         if ( self.shape == Shape.SAW ):
             y = offs + ampl * sg.sawtooth(2 * np.pi * self.f * x / self.fs )
-        
-        #with open('test.wav','wb') as f:
-        #    for i in y: f.write(struct.pack('b', i))          
-          
+                  
         return y
-        
+
+def save_wav(file_name, samples, sample_rate=44100.0):
+   import scipy.io.wavfile
+   scipy.io.wavfile.write(file_name, int(sample_rate), np.array(samples))
+
+def play(file_name):
+    import subprocess
+    # C:\Windows\System32\rundll32.exe
+    subprocess.call(['rundll32', 'C:\Program Files\Windows Photo Viewer\PhotoViewer.dll', 'ImageView_Fullscreen', file_name])
+
 if __name__ == '__main__':
-    o = Oscillator(Shape.SIN)
+    o = Oscillator(Shape.SIN) #,fs=44100,f=1000
     samples = o.get_samples(offs=0, ampl=1)
+
+    file_name = os.getcwd() + '/test.wav'
+    save_wav(file_name, samples)
+    play(file_name)
     print(samples)
+    
+'''
+pip install scipy
+'''
