@@ -34,7 +34,7 @@ class Oscillator(object):
         https://github.com/makermovement/3.5-Sensor2Phone
         """
         y = 0
-        x = np.arange(self.fs)
+        x = np.arange(self.fs*5000)
                 
         if ( self.shape == Shape.SIN ):
             #y = [ offs+ampl*np.sin(2*np.pi*self.f * (i/self.fs)) for i in x]
@@ -47,8 +47,8 @@ class Oscillator(object):
         return y
 
 def save_wav(file_name, samples, sample_rate=44100.0):
-   import scipy.io.wavfile
-   scipy.io.wavfile.write(file_name, int(sample_rate), np.array(samples))
+    import scipy.io.wavfile
+    scipy.io.wavfile.write(file_name, int(sample_rate), np.array(samples).astype(np.int16))
 
 def play(file_name):
     import subprocess
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     samples = o.get_samples(offs=0, ampl=1)
 
     file_name = os.getcwd() + '/test.wav'
-    save_wav(file_name, samples)
+    save_wav(file_name, samples*1000)
     play(file_name)
     print(samples)
     
