@@ -366,9 +366,9 @@ if __name__ == '__main__':
 
     #test_smooth()    
     #plot_single_timeseries(file)
-    #plot_functions(file, city)
+    plot_functions(file, city)
     
     df_all = agg_all(citys, agg)
-    test_pca(df_all, citys)
+    #test_pca(df_all, citys)
     #plot_epochs(df_all, citys)
     
