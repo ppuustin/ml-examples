@@ -223,6 +223,13 @@ def plot_functions(file, city):
     plt.show()
     plt.close()
 
+def plot_functions2(file, city):    
+    print(sys._getframe().f_code.co_name)
+    df = get_data(file)
+
+    start, end = '2024-01-01', '2024-12-31'
+    vcol = df.columns[-1]
+
     fs = (10, 9)#w,h
     fig, axes = plt.subplots(nrows=3, ncols=1, figsize=fs)
     ax_flat = axes.flat
@@ -246,18 +253,16 @@ def plot_functions(file, city):
  
     # MACD    
     span_lo, span_hi = 12, 26
+    df_mean = df_mean.mean()
     title = '{0} - {1} (MACD {2}/{3})'.format(city, vcol, span_lo, span_hi) #EMA 9
     ema_lo = df_mean.ewm(span=span_lo, adjust=False).mean()        
     ema_hi = df_mean.ewm(span=span_hi, adjust=False).mean() 
     macd = ema_lo - ema_hi
     
-    print(macd)
-    
     macd.plot(kind='line', grid=True, title=title, ax=ax_flat[idx], rot=rot)    # 8. macd
     ema_9 = macd.ewm(span=9, adjust=False).mean() 
     ema_9.plot(kind='line', ax=ax_flat[idx], rot=rot)                           # 9. ema9
     ax_flat[idx].grid()
-    
     
     # RSI
     delta = macd.diff()
@@ -332,7 +337,6 @@ def plot_epochs(df, vcols, dcol='date', cpca='pca'):
     
     idx = df.index.values
 
-
     p = '%Y-%m-%d'
     epoch = datetime(1970, 1, 1)
     epochs = []
@@ -367,8 +371,9 @@ if __name__ == '__main__':
     #test_smooth()    
     #plot_single_timeseries(file)
     plot_functions(file, city)
+    #plot_functions2(file, city)
     
-    df_all = agg_all(citys, agg)
+    #df_all = agg_all(citys, agg)
     #test_pca(df_all, citys)
     #plot_epochs(df_all, citys)
     
