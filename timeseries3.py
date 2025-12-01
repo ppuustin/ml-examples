@@ -161,7 +161,7 @@ def plot_single_timeseries(file):
     plt.show()
     plt.close()
     
-def plot_functions(file, city):    
+def plot_basic_aggregation(file, city):    
     print(sys._getframe().f_code.co_name)
     df = get_data(file)
 
@@ -223,7 +223,7 @@ def plot_functions(file, city):
     plt.show()
     plt.close()
 
-def plot_functions2(file, city):    
+def plot_macd(file, city):    
     print(sys._getframe().f_code.co_name)
     df = get_data(file)
 
@@ -259,9 +259,9 @@ def plot_functions2(file, city):
     ema_hi = df_mean.ewm(span=span_hi, adjust=False).mean() 
     macd = ema_lo - ema_hi
     
-    macd.plot(kind='line', grid=True, title=title, ax=ax_flat[idx], rot=rot)    # 8. macd
+    macd.plot(kind='line', grid=True, title=title, ax=ax_flat[idx], rot=rot)    # 8. macd = positive when 12 is above 26
     ema_9 = macd.ewm(span=9, adjust=False).mean() 
-    ema_9.plot(kind='line', ax=ax_flat[idx], rot=rot)                           # 9. ema9
+    ema_9.plot(kind='line', ax=ax_flat[idx], rot=rot)                           # 9. ema9, the signal line
     ax_flat[idx].grid()
     
     # RSI
@@ -370,8 +370,8 @@ if __name__ == '__main__':
 
     #test_smooth()    
     #plot_single_timeseries(file)
-    plot_functions(file, city)
-    #plot_functions2(file, city)
+    #plot_basic_aggregation(file, city)
+    plot_macd(file, city)
     
     #df_all = agg_all(citys, agg)
     #test_pca(df_all, citys)
