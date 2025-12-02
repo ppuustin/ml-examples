@@ -88,6 +88,20 @@ class ClaudeProvider(LLMProvider):
         credentials = self.init_boto().get_credentials()
         return BedrockTokenGenerator().get_token(credentials, region)
 
+    @staticmethod
+    def list_models():
+        import boto3
+        # aws bedrock list-inference-profiles
+        client = boto3.client(service_name="bedrock")
+        response = client.list_foundation_models()
+        models = response["modelSummaries"]
+
+        for model in models:
+            if 'Claude' in model['modelName']:
+                print(f"Model: {model['modelName']}")
+                print(json.dumps(model, indent=2))
+                print("---------------------------\n")
+
     def prompt(self, prompt):
         request = {
           'anthropic_version' : self.anthropic_version,
@@ -102,8 +116,7 @@ class ClaudeProvider(LLMProvider):
         model_response = json.loads(response['body'].read())
         return model_response['content'][0]['text']
 
-
-def main():
+def main(s):
     '''
      4. Return the answer as class of number 1 or 0 in schema <text_class></text_class>.
 
@@ -142,27 +155,27 @@ def main():
     props = {}
     props['temperature'] = 0.0
 
-    #props['key'] = 'xx'
-    #props['url'] = 'xx'
-    #props['version'] = '2025-01-01-preview'
-    #props['model_name'] = 'gpt-4o'
-    #llm = GptProvider(temperature, key, url, version, model_name)
+    gprops = props.copy()
+    gprops['key'] = ''
+    gprops['url'] = ''
+    gprops['version'] = ''
+    gprops['model_name'] = ''
+    llm = GptProvider(**gprops)
     #vect = llm.get_embeddings(chunk)
 
-    props['region'] = 'xx'    
-    props['model_name'] = 'xx'
-    props['anthropic_version'] = 'xx'
-    props['max_tokens'] = 500
-    llm = ClaudeProvider(**props)
+    cprops = props.copy()
+    cprops['region'] = ''    
+    cprops['model_name'] = ''
+    cprops['anthropic_version'] = ''  
+    cprops['max_tokens'] = 500
+
+    llm = ClaudeProvider(**cprops)
 
     message = llm.prompt(user_message)
     print(message)
 
 if __name__ == '__main__':    
-    main()
+    main(s)
+
 '''
-    props['region'] = 'xx'    
-    props['model_name'] = 'xx'
-    props['anthropic_version'] = 'xx'
-    props['max_tokens'] = 500    
 '''
